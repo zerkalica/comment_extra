@@ -1,0 +1,12 @@
+name = Comment extra
+description = Restrict comments to one per user per node and for own comments.
+core = 7.x
+
+dependencies[] = "comment"
+
+; Information added by drupal.org packaging script on 2011-08-30
+version = "7.x-1.0-beta2"
+core = "7.x"
+project = "comment_extra"
+datestamp = "1314698223"
+

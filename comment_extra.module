@@ -1,0 +1,122 @@
+<?php
+
+/**
+ * Implementation of hook_permission().
+ * @return array $perms
+ */
+function comment_extra_permission() {
+  $perms = array();
+
+  foreach (node_type_get_types() as $node) {
+    $type = check_plain($node->type);
+    $perm = 'add comment to own ' . $type;
+    $perms += array(
+      $perm => array(
+        'title' => t('%type: Add comments to own content', array('%type' => $node->name)),
+      ),
+    );
+  }
+
+  return $perms;
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function comment_extra_form_node_type_form_alter(&$form, $form_state) {
+  if (isset($form['comment'])) {
+    $form['comment']['comment_extra_comments_count'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Comments count per user per node'),
+      '#description' => t('Type 0 for unlimited'),
+      '#default_value' => variable_get('comment_extra_comments_count_' . $form['#node_type']->type, 0),
+    );
+  }
+}
+
+/**
+ * Gets comment count for the user for this node.
+ *
+ * Caches results by user & node to allow calling the function multiple times.
+ */
+function _comment_extra_get_comment_count($nid, $uid) {
+
+  $comments = &drupal_static(__FUNCTION__, array());
+
+  if (!isset($comments[$uid][$nid])) {
+    $query = new EntityFieldQuery();
+    $comments[$uid][$nid] = $query->entityCondition('entity_type', 'comment')
+      ->propertyCondition('uid', $uid)
+      ->propertyCondition('nid', $nid)
+      ->count()
+      ->execute();
+  }
+
+  return $comments[$uid][$nid];
+}
+
+function _comment_extra_is_form_accessed($node, $uid = null)
+{
+  if (!isset($uid)) {
+    global $user;
+    $uid = $user->uid;
+  }
+
+  $type = $node->type;
+
+  if($node->uid == $uid && !user_access('add comment to own ' . $type)) {
+    return false;
+  }
+
+  $max_count = variable_get('comment_extra_comments_count_' . $type, 0);
+
+  if ($max_count && _comment_extra_get_comment_count($node->nid, $uid) >= $max_count) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function comment_extra_form_comment_form_alter(&$form, &$form_state) {
+  $node =  $form['#node'];
+  $comment = isset($form_state['build_info']['args'][0])
+    ? $form_state['build_info']['args'][0]
+    : null;
+
+  if(!$comment || !$comment->cid && empty($form['#access'])) {
+    $form['#access'] = _comment_extra_is_form_accessed($node);
+  }
+}
+
+function _comment_extra_fix_comment_additions(&$content) {
+  $additions = & $content['comments'];
+  $form      = & $additions['comment_form'];
+  $hide_form = $form && array_key_exists('#access', $form) && $form['#access'] === false;
+
+  if($hide_form) {
+    foreach($additions['comments'] as & $item) {
+      if(isset($item['links'])) {
+        unset($item['links']['comment']['#links']['comment-reply']);
+      }
+    }
+    unset($content['links']['comment']['#links']['comment-add']);
+    $form = array();
+  }
+
+  return $hide_form;
+}
+
+function comment_extra_node_view($node, $view_mode, $langcode) {
+  if(isset($node->content['comments'])) {
+    _comment_extra_fix_comment_additions($node->content);
+  }
+}
+
+function comment_extra_preprocess_node(&$vars) {
+  if(isset($vars['content']['comments'])) {
+    _comment_extra_fix_comment_additions($vars['content']);
+  }
+}

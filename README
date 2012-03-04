@@ -1,0 +1,4 @@
+Comment extra module for drupal 7
+
+Deny comments creation for node author and allow only one comment per user per node.
+Usable with fivestar module
